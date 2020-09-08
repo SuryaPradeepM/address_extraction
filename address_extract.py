@@ -1,9 +1,7 @@
-# Extract address from unstructured text
-
-import pickle
+import os, PyPDF2
+import string, pickle
 import nltk
-import string
-
+from pprint import pprint
 from nltk import pos_tag
 from nltk import word_tokenize
 from nltk.chunk import ChunkParserI
@@ -14,6 +12,7 @@ from nltk.stem.snowball import SnowballStemmer
 
 # IOB tag name for specifying address 
 GPE_TAG = "GPE"
+
 
 class AddressChunker(ChunkParserI):
     def __init__(self, train_sents, **kwargs):
@@ -31,10 +30,10 @@ class AddressChunker(ChunkParserI):
 
         # Transform the list of triplets to nltk.Tree format
         return conlltags2tree(iob_triplets)
-    
+
     def features(self, tokens, index, history):
         # for more details see: http://nlpforhackers.io/named-entity-extraction/ 
-        
+
         """
         `tokens`  = a POS-tagged sentence [(w1, t1), ...]
         `index`   = the index of the token we want to extract features for
@@ -45,7 +44,8 @@ class AddressChunker(ChunkParserI):
         stemmer = SnowballStemmer('english')
 
         # Pad the sequence with placeholders
-        tokens = [('[START2]', '[START2]'), ('[START1]', '[START1]')] + list(tokens) + [('[END1]', '[END1]'), ('[END2]', '[END2]')]
+        tokens = [('[START2]', '[START2]'), ('[START1]', '[START1]')] + list(tokens) + [('[END1]', '[END1]'),
+                                                                                        ('[END2]', '[END2]')]
         history = ['[START2]', '[START1]'] + list(history)
 
         # shift the index with 2, to accommodate the padding
@@ -107,6 +107,7 @@ class AddressChunker(ChunkParserI):
 
         return f
 
+
 def get_address_chunker(dataset_file_name):
     """
     returns AddressChunker instance with dataset_file_name as training samples
@@ -121,6 +122,7 @@ def get_address_chunker(dataset_file_name):
 
     return chunker
 
+
 def get_chuncker_accuracy(chunker, test_samples):
     """
     returns score of the chunker against the gold standard
@@ -128,8 +130,9 @@ def get_chuncker_accuracy(chunker, test_samples):
     score = chunker.evaluate([
         conlltags2tree([(w, t, iob) for (w, t), iob in iobs])
         for iobs in test_samples
-        ])
+    ])
     return score.accuracy()
+
 
 def get_tagged_sentence(chunker, sentence):
     """
@@ -137,10 +140,12 @@ def get_tagged_sentence(chunker, sentence):
     """
     return chunker.parse(pos_tag(word_tokenize(sentence)))
 
+
 def extract_address(chunker, sentence):
     """
     returns all addresses in sentence
     """
+
     def tree_filter(tree):
         return GPE_TAG == tree.label()
 
@@ -150,7 +155,44 @@ def extract_address(chunker, sentence):
         addresses.append(untag(subtree.leaves()))
     return addresses
 
+
 print("Loading dataset...")
+
+def read_docs(filepath='docs'):
+    """
+    returns text from pages from readable pdf documents in a list
+    """
+    pages = []
+    for pdf in os.listdir(filepath):
+        files_path = os.path.join(os.getcwd(), filepath)
+        # print(os.path.join(files_path, pdf))
+        pdfFileObj = open(os.path.join(files_path, pdf), 'rb')
+        pdfReader = PyPDF2.PdfFileReader(pdfFileObj)
+
+        # Read pages from the pdfs
+        pages += [pdfReader.getPage(p).extractText() for p in range(pdfReader.numPages)]
+    return pages
+
+
+pages = read_docs('docs')
+# pprint(pages)
+
 chunker = get_address_chunker('dataset/IOB_tagged_addresses.pkl')
-print("Done.")
-print(extract_address(chunker, "Hey man! Joe lives here: 44 West 22nd Street, New York, NY 12345. Can you contact him now? If you need any help, call me on 12345678"))
+print("Sample sentence tagged: \n")
+print(extract_address(chunker,
+                      "Hey man! Joe lives here: 44 West 22nd Street, New York, NY 12345. Can you contact him now? If you need any help, call me on 12345678"))
+
+print("Tagging pages from pdfs...")
+
+
+def tag_text(pages=pages, chunker=chunker):
+    for page in pages:
+        print(page)
+        print()
+        print(extract_address(chunker,page))
+        #pprint(get_address_chunker(chunker, page))
+        print()
+
+tag_text()
+
+print("Done")
